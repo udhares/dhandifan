@@ -1,0 +1,89 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand: #1f6b4a;
+  --color-brand-dark: #14472f;
+  --color-brand-soft: #e6f0e8;
+  --color-amber: #e0913a;
+  --color-teal: #0e7c86;
+  --color-paper: #f3f6f1;
+  --color-ink: #14261c;
+}
+
+:root {
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+}
+
+a {
+  color: inherit;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 14px 24px;
+  background: var(--color-brand-dark);
+  color: #fff;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: #fff;
+}
+
+.brand-mark {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: var(--color-amber);
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+}
+
+.brand-name {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.nav {
+  margin-left: auto;
+  display: flex;
+  gap: 18px;
+}
+
+.nav a {
+  color: #cfe0d4;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.nav a:hover {
+  color: #fff;
+}
+
+.main {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 28px 24px 64px;
+}
