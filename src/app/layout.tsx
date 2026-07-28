@@ -28,7 +28,8 @@ export default function RootLayout({
           </Link>
           <nav className="nav">
             <Link href="/products">Shop</Link>
-            <Link href="/farmer/listings">Farmer</Link>
+            <Link href="/farmer/listings">Listings</Link>
+            <Link href="/farmer/orders">Orders</Link>
           </nav>
         </header>
         <main className="main">{children}</main>
