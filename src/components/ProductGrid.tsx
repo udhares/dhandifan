@@ -17,25 +17,97 @@ export interface PublicListing {
 }
 
 const CATEGORIES = ["All", "Fruit", "Vegetable", "Herb", "Other"];
+const DELIVERY = [
+  "Dhoni / boat to Malé",
+  "Ferry / terminal pickup",
+  "Home delivery on the island",
+  "I'll arrange my own transport",
+];
 
 export default function ProductGrid({ listings }: { listings: PublicListing[] }) {
   const [q, setQ] = useState("");
   const [cat, setCat] = useState("All");
   const [sort, setSort] = useState("newest");
 
+  const [cart, setCart] = useState<Record<string, number>>({});
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [form, setForm] = useState({ name: "", phone: "", delivery: DELIVERY[0], address: "" });
+  const [placing, setPlacing] = useState(false);
+  const [error, setError] = useState("");
+  const [done, setDone] = useState<{ ref: string; total: number } | null>(null);
+
+  const byId = useMemo(() => {
+    const m: Record<string, PublicListing> = {};
+    listings.forEach((l) => (m[l._id] = l));
+    return m;
+  }, [listings]);
+
   const shown = useMemo(() => {
-    let out = listings.filter((l) => {
-      const matchCat = cat === "All" || l.category === cat;
-      const matchQ = l.title.toLowerCase().includes(q.toLowerCase());
-      return matchCat && matchQ;
-    });
+    let out = listings.filter(
+      (l) => (cat === "All" || l.category === cat) && l.title.toLowerCase().includes(q.toLowerCase())
+    );
     if (sort === "price-low") out = [...out].sort((a, b) => a.price - b.price);
     else if (sort === "price-high") out = [...out].sort((a, b) => b.price - a.price);
     return out;
   }, [listings, q, cat, sort]);
 
+  const cartEntries = Object.entries(cart).filter(([, n]) => n > 0);
+  const itemCount = cartEntries.reduce((s, [, n]) => s + n, 0);
+  const cartTotal = cartEntries.reduce((s, [id, n]) => s + (byId[id] ? byId[id].price * n : 0), 0);
+
+  function setQty(id: string, delta: number) {
+    setCart((c) => {
+      const l = byId[id];
+      const max = l ? l.stock : 0;
+      let next = (c[id] || 0) + delta;
+      if (next < 0) next = 0;
+      if (next > max) next = max;
+      const copy = { ...c };
+      if (next <= 0) delete copy[id];
+      else copy[id] = next;
+      return copy;
+    });
+  }
+
+  async function placeOrder() {
+    if (!form.name.trim() || !form.phone.trim()) {
+      setError("Please enter your name and phone number.");
+      return;
+    }
+    if (cartEntries.length === 0) {
+      setError("Your cart is empty.");
+      return;
+    }
+    setPlacing(true);
+    setError("");
+    try {
+      const res = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          buyerName: form.name,
+          buyerPhone: form.phone,
+          deliveryMethod: form.delivery,
+          address: form.address,
+          items: cartEntries.map(([id, qty]) => ({ listingId: id, qty })),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "failed");
+      setDone({ ref: data.ref, total: data.total });
+      setCart({});
+      setCheckoutOpen(false);
+      setForm({ name: "", phone: "", delivery: DELIVERY[0], address: "" });
+    } catch {
+      setError("Could not place the order. Please try again.");
+    } finally {
+      setPlacing(false);
+    }
+  }
+
   return (
     <div>
+      {/* search + sort */}
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
         <input
           value={q}
@@ -50,6 +122,7 @@ export default function ProductGrid({ listings }: { listings: PublicListing[] })
         </select>
       </div>
 
+      {/* categories */}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 22 }}>
         {CATEGORIES.map((c) => (
           <button
@@ -77,93 +150,171 @@ export default function ProductGrid({ listings }: { listings: PublicListing[] })
             gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
           }}
         >
-          {shown.map((l) => (
-            <ProductCard key={l._id} l={l} />
-          ))}
+          {shown.map((l) => {
+            const soldOut = l.stock <= 0;
+            const inCart = cart[l._id] || 0;
+            return (
+              <div key={l._id} style={card}>
+                <div style={{ ...media, opacity: soldOut ? 0.55 : 1 }}>
+                  {l.photoUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={l.photoUrl} alt={l.title} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  ) : (
+                    <span style={{ fontSize: 48 }}>{l.emoji}</span>
+                  )}
+                  {l.certified && <span style={certBadge}>✓ Certified</span>}
+                  {soldOut && <span style={soldBadge}>Sold out</span>}
+                </div>
+                <div style={{ padding: "14px 15px" }}>
+                  <div style={{ fontWeight: 700, fontSize: 16 }}>{l.title}</div>
+                  <div style={{ color: "#6b7c71", fontSize: 13, minHeight: 18 }}>{l.description}</div>
+                  <div
+                    style={{
+                      marginTop: 10,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 8,
+                    }}
+                  >
+                    <span style={{ fontWeight: 800, fontSize: 18, color: "#14472f" }}>
+                      MVR {l.price.toLocaleString()}
+                      <span style={{ fontSize: 12, color: "#6b7c71", fontWeight: 600 }}> /{l.unit}</span>
+                    </span>
+                    {soldOut ? (
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "#6b7c71" }}>Sold out</span>
+                    ) : inCart > 0 ? (
+                      <span style={qtyBox}>
+                        <button style={qtyBtn} onClick={() => setQty(l._id, -1)}>−</button>
+                        <span style={{ minWidth: 22, textAlign: "center", fontWeight: 700 }}>{inCart}</span>
+                        <button style={qtyBtn} onClick={() => setQty(l._id, 1)}>+</button>
+                      </span>
+                    ) : (
+                      <button style={addBtn} onClick={() => setQty(l._id, 1)}>Add</button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* floating cart bar */}
+      {itemCount > 0 && (
+        <div style={cartBar}>
+          <span style={{ fontWeight: 600 }}>
+            {itemCount} item{itemCount > 1 ? "s" : ""} · MVR {cartTotal.toLocaleString()}
+          </span>
+          <button style={checkoutBtn} onClick={() => { setError(""); setCheckoutOpen(true); }}>
+            Checkout →
+          </button>
+        </div>
+      )}
+
+      {/* checkout modal */}
+      {checkoutOpen && (
+        <div style={overlay} onClick={(e) => { if (e.target === e.currentTarget) setCheckoutOpen(false); }}>
+          <div style={modal}>
+            <h2 style={{ margin: "0 0 4px", fontSize: 22, color: "#14472f" }}>Your order</h2>
+            <p style={{ margin: "0 0 16px", color: "#6b7c71", fontSize: 13 }}>
+              No account needed — just your name and phone.
+            </p>
+
+            <div style={{ marginBottom: 16 }}>
+              {cartEntries.map(([id, n]) => {
+                const l = byId[id];
+                if (!l) return null;
+                return (
+                  <div key={id} style={orderRow}>
+                    <span>{n}× {l.title}</span>
+                    <span style={{ fontWeight: 600 }}>MVR {(l.price * n).toLocaleString()}</span>
+                  </div>
+                );
+              })}
+              <div style={{ ...orderRow, borderBottom: "none", marginTop: 4 }}>
+                <span style={{ fontWeight: 800, fontSize: 17 }}>Total</span>
+                <span style={{ fontWeight: 800, fontSize: 17, color: "#14472f" }}>
+                  MVR {cartTotal.toLocaleString()}
+                </span>
+              </div>
+            </div>
+
+            <Field label="Your name *">
+              <input style={inp} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Aminath" />
+            </Field>
+            <Field label="Phone number *">
+              <input style={inp} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="e.g. 777-1234" />
+            </Field>
+            <Field label="Delivery method">
+              <select style={inp} value={form.delivery} onChange={(e) => setForm({ ...form, delivery: e.target.value })}>
+                {DELIVERY.map((d) => <option key={d}>{d}</option>)}
+              </select>
+            </Field>
+            <Field label="Delivery address / note">
+              <input style={inp} value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="Where should it go?" />
+            </Field>
+
+            <p style={{ fontSize: 12, color: "#6b7c71", margin: "4px 0 12px" }}>
+              After you place the order, the farm will contact you to confirm and share payment &amp; delivery details.
+            </p>
+
+            {error && <p style={{ color: "#c4553b", fontSize: 14, margin: "0 0 10px" }}>{error}</p>}
+
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button style={ghostBtn} onClick={() => setCheckoutOpen(false)}>Back</button>
+              <button style={{ ...addBtn, padding: "11px 20px", fontSize: 15, opacity: placing ? 0.7 : 1 }} onClick={placeOrder} disabled={placing}>
+                {placing ? "Placing..." : "Place order"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* success modal */}
+      {done && (
+        <div style={overlay} onClick={(e) => { if (e.target === e.currentTarget) setDone(null); }}>
+          <div style={{ ...modal, textAlign: "center" }}>
+            <div style={{ fontSize: 48 }}>✅</div>
+            <h2 style={{ margin: "8px 0 6px", fontSize: 22, color: "#14472f" }}>Order placed!</h2>
+            <p style={{ color: "#333", margin: "0 0 6px" }}>
+              Your reference is <b>#{done.ref}</b> · Total <b>MVR {done.total.toLocaleString()}</b>
+            </p>
+            <p style={{ color: "#6b7c71", fontSize: 14, margin: "0 0 18px" }}>
+              The farm will contact you to confirm and arrange payment &amp; delivery. Shukuriyaa!
+            </p>
+            <button style={{ ...addBtn, padding: "11px 22px", fontSize: 15 }} onClick={() => setDone(null)}>
+              Done
+            </button>
+          </div>
         </div>
       )}
     </div>
   );
 }
 
-function ProductCard({ l }: { l: PublicListing }) {
-  const soldOut = l.stock <= 0;
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div style={card}>
-      <div style={{ ...media, opacity: soldOut ? 0.55 : 1 }}>
-        {l.photoUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={l.photoUrl}
-            alt={l.title}
-            style={{ width: "100%", height: "100%", objectFit: "cover" }}
-          />
-        ) : (
-          <span style={{ fontSize: 48 }}>{l.emoji}</span>
-        )}
-        {l.certified && <span style={certBadge}>✓ Certified</span>}
-        {soldOut && <span style={soldBadge}>Sold out</span>}
-      </div>
-      <div style={{ padding: "14px 15px" }}>
-        <div style={{ fontWeight: 700, fontSize: 16 }}>{l.title}</div>
-        <div style={{ color: "#6b7c71", fontSize: 13, minHeight: 18 }}>{l.description}</div>
-        <div style={{ marginTop: 10, fontWeight: 800, fontSize: 18, color: "#14472f" }}>
-          MVR {l.price.toLocaleString()}
-          <span style={{ fontSize: 12, color: "#6b7c71", fontWeight: 600 }}> /{l.unit}</span>
-        </div>
-      </div>
-    </div>
+    <label style={{ display: "block", marginBottom: 12 }}>
+      <span style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 5 }}>{label}</span>
+      {children}
+    </label>
   );
 }
 
-const inputStyle: React.CSSProperties = {
-  padding: "10px 12px",
-  border: "1px solid #c9d6c8",
-  borderRadius: 10,
-  fontSize: 15,
-  background: "#fff",
-};
-const chip: React.CSSProperties = {
-  padding: "7px 14px",
-  borderRadius: 20,
-  border: "1px solid",
-  fontWeight: 600,
-  fontSize: 13,
-  cursor: "pointer",
-};
-const card: React.CSSProperties = {
-  background: "#fff",
-  border: "1px solid #e2e9e1",
-  borderRadius: 16,
-  overflow: "hidden",
-  boxShadow: "0 8px 24px rgba(20,38,28,.06)",
-};
-const media: React.CSSProperties = {
-  height: 120,
-  background: "#e6f0e8",
-  display: "grid",
-  placeItems: "center",
-  position: "relative",
-};
-const certBadge: React.CSSProperties = {
-  position: "absolute",
-  top: 10,
-  right: 10,
-  background: "#1f6b4a",
-  color: "#fff",
-  fontSize: 11,
-  fontWeight: 700,
-  padding: "3px 8px",
-  borderRadius: 20,
-};
-const soldBadge: React.CSSProperties = {
-  position: "absolute",
-  top: 10,
-  left: 10,
-  background: "rgba(20,38,28,.8)",
-  color: "#fff",
-  fontSize: 11,
-  fontWeight: 700,
-  padding: "3px 8px",
-  borderRadius: 20,
-};
+const inputStyle: React.CSSProperties = { padding: "10px 12px", border: "1px solid #c9d6c8", borderRadius: 10, fontSize: 15, background: "#fff" };
+const chip: React.CSSProperties = { padding: "7px 14px", borderRadius: 20, border: "1px solid", fontWeight: 600, fontSize: 13, cursor: "pointer" };
+const card: React.CSSProperties = { background: "#fff", border: "1px solid #e2e9e1", borderRadius: 16, overflow: "hidden", boxShadow: "0 8px 24px rgba(20,38,28,.06)" };
+const media: React.CSSProperties = { height: 120, background: "#e6f0e8", display: "grid", placeItems: "center", position: "relative" };
+const certBadge: React.CSSProperties = { position: "absolute", top: 10, right: 10, background: "#1f6b4a", color: "#fff", fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 20 };
+const soldBadge: React.CSSProperties = { position: "absolute", top: 10, left: 10, background: "rgba(20,38,28,.8)", color: "#fff", fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 20 };
+const addBtn: React.CSSProperties = { background: "#1f6b4a", color: "#fff", border: "none", borderRadius: 9, padding: "8px 14px", fontWeight: 700, fontSize: 13, cursor: "pointer" };
+const ghostBtn: React.CSSProperties = { background: "#fff", color: "#14261c", border: "1px solid #c9d6c8", borderRadius: 9, padding: "10px 16px", fontWeight: 600, fontSize: 14, cursor: "pointer" };
+const qtyBox: React.CSSProperties = { display: "inline-flex", alignItems: "center", border: "1px solid #c9d6c8", borderRadius: 9, overflow: "hidden" };
+const qtyBtn: React.CSSProperties = { width: 30, height: 30, border: "none", background: "#fff", color: "#1f6b4a", fontSize: 16, cursor: "pointer" };
+const cartBar: React.CSSProperties = { position: "fixed", left: "50%", bottom: 20, transform: "translateX(-50%)", background: "#14472f", color: "#fff", borderRadius: 14, padding: "12px 16px", display: "flex", alignItems: "center", gap: 16, boxShadow: "0 12px 40px rgba(20,38,28,.28)", zIndex: 40 };
+const checkoutBtn: React.CSSProperties = { background: "#e0913a", color: "#fff", border: "none", borderRadius: 10, padding: "9px 16px", fontWeight: 700, fontSize: 14, cursor: "pointer" };
+const overlay: React.CSSProperties = { position: "fixed", inset: 0, background: "rgba(20,38,28,.45)", display: "grid", placeItems: "center", padding: 18, zIndex: 50 };
+const modal: React.CSSProperties = { background: "#fff", borderRadius: 18, padding: 22, width: "100%", maxWidth: 460, maxHeight: "90vh", overflow: "auto", boxShadow: "0 20px 60px rgba(20,38,28,.3)" };
+const orderRow: React.CSSProperties = { display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px dashed #e2e9e1", fontSize: 14 };
+const inp: React.CSSProperties = { width: "100%", padding: "9px 11px", border: "1px solid #c9d6c8", borderRadius: 9, fontSize: 15, background: "#fff", boxSizing: "border-box" };
