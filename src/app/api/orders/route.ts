@@ -8,8 +8,17 @@ type OrderItemInput = { listingId: string; qty: number };
 type BuiltItem = { listingId: unknown; title: string; qty: number; price: number };
 
 const STATUSES = ["new", "confirmed", "packed", "out", "delivered", "cancelled"];
+const PAYMENTS = ["unpaid", "submitted", "paid"];
 
-// GET /api/orders -> list the farmer's orders (newest first)
+function bankDetails() {
+  return {
+    bank: process.env.BML_BANK || "Bank of Maldives",
+    name: process.env.BML_ACCOUNT_NAME || "",
+    account: process.env.BML_ACCOUNT_NUMBER || "",
+  };
+}
+
+// GET -> list the farmer's orders (newest first)
 export async function GET() {
   try {
     await connectDB();
@@ -22,7 +31,7 @@ export async function GET() {
   }
 }
 
-// POST /api/orders -> place a new order (guest checkout)
+// POST -> place a new order (guest checkout)
 export async function POST(req: NextRequest) {
   try {
     await connectDB();
@@ -38,7 +47,6 @@ export async function POST(req: NextRequest) {
     }
 
     const farmer = await getDefaultFarmer();
-
     const orderItems: BuiltItem[] = [];
     for (const it of items) {
       const listing = await Listing.findById(it.listingId)
@@ -64,7 +72,13 @@ export async function POST(req: NextRequest) {
 
     const total = orderItems.reduce((s, i) => s + i.price * i.qty, 0);
     return NextResponse.json(
-      { ok: true, ref: String(order._id).slice(-6).toUpperCase(), total },
+      {
+        ok: true,
+        orderId: String(order._id),
+        ref: String(order._id).slice(-6).toUpperCase(),
+        total,
+        bank: bankDetails(),
+      },
       { status: 201 }
     );
   } catch (err) {
@@ -73,17 +87,30 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// PATCH /api/orders -> update an order's status
+// PATCH -> update order status and/or payment status (farmer only)
 export async function PATCH(req: NextRequest) {
   try {
     await connectDB();
     const body = await req.json();
     const id: string = body?.id ?? "";
     const status: string = body?.status ?? "";
-    if (!id || !STATUSES.includes(status)) {
-      return NextResponse.json({ error: "Missing id or invalid status" }, { status: 400 });
+    const paymentStatus: string = body?.paymentStatus ?? "";
+    if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+
+    const update: Record<string, string> = {};
+    if (status) {
+      if (!STATUSES.includes(status)) return NextResponse.json({ error: "Bad status" }, { status: 400 });
+      update.status = status;
     }
-    const updated = await Order.findByIdAndUpdate(id, { status }, { new: true }).lean();
+    if (paymentStatus) {
+      if (!PAYMENTS.includes(paymentStatus)) return NextResponse.json({ error: "Bad payment status" }, { status: 400 });
+      update.paymentStatus = paymentStatus;
+    }
+    if (Object.keys(update).length === 0) {
+      return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
+    }
+
+    const updated = await Order.findByIdAndUpdate(id, update, { new: true }).lean();
     if (!updated) return NextResponse.json({ error: "Order not found" }, { status: 404 });
     return NextResponse.json({ ok: true });
   } catch (err) {

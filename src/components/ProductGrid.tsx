@@ -16,6 +16,9 @@ export interface PublicListing {
   createdAt?: string;
 }
 
+interface Bank { bank: string; name: string; account: string; }
+interface Placed { orderId: string; ref: string; total: number; bank: Bank; }
+
 const CATEGORIES = ["All", "Fruit", "Vegetable", "Herb", "Other"];
 const DELIVERY = [
   "Dhoni / boat to Malé",
@@ -34,7 +37,11 @@ export default function ProductGrid({ listings }: { listings: PublicListing[] })
   const [form, setForm] = useState({ name: "", phone: "", delivery: DELIVERY[0], address: "" });
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState("");
-  const [done, setDone] = useState<{ ref: string; total: number } | null>(null);
+
+  const [done, setDone] = useState<Placed | null>(null);
+  const [payRef, setPayRef] = useState("");
+  const [payBusy, setPayBusy] = useState(false);
+  const [paidSubmitted, setPaidSubmitted] = useState(false);
 
   const byId = useMemo(() => {
     const m: Record<string, PublicListing> = {};
@@ -94,7 +101,9 @@ export default function ProductGrid({ listings }: { listings: PublicListing[] })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "failed");
-      setDone({ ref: data.ref, total: data.total });
+      setDone({ orderId: data.orderId, ref: data.ref, total: data.total, bank: data.bank });
+      setPaidSubmitted(false);
+      setPayRef("");
       setCart({});
       setCheckoutOpen(false);
       setForm({ name: "", phone: "", delivery: DELIVERY[0], address: "" });
@@ -105,16 +114,25 @@ export default function ProductGrid({ listings }: { listings: PublicListing[] })
     }
   }
 
+  async function submitPayment() {
+    if (!done || !payRef.trim()) return;
+    setPayBusy(true);
+    try {
+      const res = await fetch("/api/pay", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: done.orderId, paymentRef: payRef }),
+      });
+      if (res.ok) setPaidSubmitted(true);
+    } finally {
+      setPayBusy(false);
+    }
+  }
+
   return (
     <div>
-      {/* search + sort */}
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Search produce..."
-          style={{ ...inputStyle, flex: 1, minWidth: 180 }}
-        />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search produce..." style={{ ...inputStyle, flex: 1, minWidth: 180 }} />
         <select value={sort} onChange={(e) => setSort(e.target.value)} style={inputStyle}>
           <option value="newest">Newest</option>
           <option value="price-low">Price: low to high</option>
@@ -122,19 +140,9 @@ export default function ProductGrid({ listings }: { listings: PublicListing[] })
         </select>
       </div>
 
-      {/* categories */}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 22 }}>
         {CATEGORIES.map((c) => (
-          <button
-            key={c}
-            onClick={() => setCat(c)}
-            style={{
-              ...chip,
-              background: cat === c ? "#1f6b4a" : "#fff",
-              color: cat === c ? "#fff" : "#14261c",
-              borderColor: cat === c ? "#1f6b4a" : "#c9d6c8",
-            }}
-          >
+          <button key={c} onClick={() => setCat(c)} style={{ ...chip, background: cat === c ? "#1f6b4a" : "#fff", color: cat === c ? "#fff" : "#14261c", borderColor: cat === c ? "#1f6b4a" : "#c9d6c8" }}>
             {c}
           </button>
         ))}
@@ -143,13 +151,7 @@ export default function ProductGrid({ listings }: { listings: PublicListing[] })
       {shown.length === 0 ? (
         <p style={{ color: "#6b7c71" }}>No produce matches your search.</p>
       ) : (
-        <div
-          style={{
-            display: "grid",
-            gap: 16,
-            gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
-          }}
-        >
+        <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>
           {shown.map((l) => {
             const soldOut = l.stock <= 0;
             const inCart = cart[l._id] || 0;
@@ -168,15 +170,7 @@ export default function ProductGrid({ listings }: { listings: PublicListing[] })
                 <div style={{ padding: "14px 15px" }}>
                   <div style={{ fontWeight: 700, fontSize: 16 }}>{l.title}</div>
                   <div style={{ color: "#6b7c71", fontSize: 13, minHeight: 18 }}>{l.description}</div>
-                  <div
-                    style={{
-                      marginTop: 10,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: 8,
-                    }}
-                  >
+                  <div style={{ marginTop: 10, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                     <span style={{ fontWeight: 800, fontSize: 18, color: "#14472f" }}>
                       MVR {l.price.toLocaleString()}
                       <span style={{ fontSize: 12, color: "#6b7c71", fontWeight: 600 }}> /{l.unit}</span>
@@ -200,27 +194,20 @@ export default function ProductGrid({ listings }: { listings: PublicListing[] })
         </div>
       )}
 
-      {/* floating cart bar */}
       {itemCount > 0 && (
         <div style={cartBar}>
           <span style={{ fontWeight: 600 }}>
             {itemCount} item{itemCount > 1 ? "s" : ""} · MVR {cartTotal.toLocaleString()}
           </span>
-          <button style={checkoutBtn} onClick={() => { setError(""); setCheckoutOpen(true); }}>
-            Checkout →
-          </button>
+          <button style={checkoutBtn} onClick={() => { setError(""); setCheckoutOpen(true); }}>Checkout →</button>
         </div>
       )}
 
-      {/* checkout modal */}
       {checkoutOpen && (
         <div style={overlay} onClick={(e) => { if (e.target === e.currentTarget) setCheckoutOpen(false); }}>
           <div style={modal}>
             <h2 style={{ margin: "0 0 4px", fontSize: 22, color: "#14472f" }}>Your order</h2>
-            <p style={{ margin: "0 0 16px", color: "#6b7c71", fontSize: 13 }}>
-              No account needed — just your name and phone.
-            </p>
-
+            <p style={{ margin: "0 0 16px", color: "#6b7c71", fontSize: 13 }}>No account needed — just your name and phone.</p>
             <div style={{ marginBottom: 16 }}>
               {cartEntries.map(([id, n]) => {
                 const l = byId[id];
@@ -234,33 +221,18 @@ export default function ProductGrid({ listings }: { listings: PublicListing[] })
               })}
               <div style={{ ...orderRow, borderBottom: "none", marginTop: 4 }}>
                 <span style={{ fontWeight: 800, fontSize: 17 }}>Total</span>
-                <span style={{ fontWeight: 800, fontSize: 17, color: "#14472f" }}>
-                  MVR {cartTotal.toLocaleString()}
-                </span>
+                <span style={{ fontWeight: 800, fontSize: 17, color: "#14472f" }}>MVR {cartTotal.toLocaleString()}</span>
               </div>
             </div>
-
-            <Field label="Your name *">
-              <input style={inp} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Aminath" />
-            </Field>
-            <Field label="Phone number *">
-              <input style={inp} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="e.g. 777-1234" />
-            </Field>
+            <Field label="Your name *"><input style={inp} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Aminath" /></Field>
+            <Field label="Phone number *"><input style={inp} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="e.g. 777-1234" /></Field>
             <Field label="Delivery method">
               <select style={inp} value={form.delivery} onChange={(e) => setForm({ ...form, delivery: e.target.value })}>
                 {DELIVERY.map((d) => <option key={d}>{d}</option>)}
               </select>
             </Field>
-            <Field label="Delivery address / note">
-              <input style={inp} value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="Where should it go?" />
-            </Field>
-
-            <p style={{ fontSize: 12, color: "#6b7c71", margin: "4px 0 12px" }}>
-              After you place the order, the farm will contact you to confirm and share payment &amp; delivery details.
-            </p>
-
+            <Field label="Delivery address / note"><input style={inp} value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="Where should it go?" /></Field>
             {error && <p style={{ color: "#c4553b", fontSize: 14, margin: "0 0 10px" }}>{error}</p>}
-
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
               <button style={ghostBtn} onClick={() => setCheckoutOpen(false)}>Back</button>
               <button style={{ ...addBtn, padding: "11px 20px", fontSize: 15, opacity: placing ? 0.7 : 1 }} onClick={placeOrder} disabled={placing}>
@@ -271,21 +243,58 @@ export default function ProductGrid({ listings }: { listings: PublicListing[] })
         </div>
       )}
 
-      {/* success modal */}
       {done && (
         <div style={overlay} onClick={(e) => { if (e.target === e.currentTarget) setDone(null); }}>
-          <div style={{ ...modal, textAlign: "center" }}>
-            <div style={{ fontSize: 48 }}>✅</div>
-            <h2 style={{ margin: "8px 0 6px", fontSize: 22, color: "#14472f" }}>Order placed!</h2>
-            <p style={{ color: "#333", margin: "0 0 6px" }}>
-              Your reference is <b>#{done.ref}</b> · Total <b>MVR {done.total.toLocaleString()}</b>
-            </p>
-            <p style={{ color: "#6b7c71", fontSize: 14, margin: "0 0 18px" }}>
-              The farm will contact you to confirm and arrange payment &amp; delivery. Shukuriyaa!
-            </p>
-            <button style={{ ...addBtn, padding: "11px 22px", fontSize: 15 }} onClick={() => setDone(null)}>
-              Done
-            </button>
+          <div style={modal}>
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 44 }}>✅</div>
+              <h2 style={{ margin: "6px 0 4px", fontSize: 22, color: "#14472f" }}>Order placed!</h2>
+              <p style={{ color: "#333", margin: 0 }}>
+                Reference <b>#{done.ref}</b> · Total <b>MVR {done.total.toLocaleString()}</b>
+              </p>
+            </div>
+
+            {paidSubmitted ? (
+              <div style={{ ...payBox, textAlign: "center" }}>
+                <div style={{ fontSize: 30 }}>🎉</div>
+                <p style={{ margin: "6px 0 0", fontWeight: 600 }}>Thank you! Payment reference received.</p>
+                <p style={{ margin: "4px 0 0", color: "#6b7c71", fontSize: 13 }}>
+                  The farm will verify it and confirm your order.
+                </p>
+              </div>
+            ) : (
+              <div style={payBox}>
+                <div style={{ fontWeight: 700, marginBottom: 8 }}>Pay by bank transfer</div>
+                {done.bank.account ? (
+                  <div style={{ fontSize: 14, lineHeight: 1.7 }}>
+                    <div><b>{done.bank.bank}</b></div>
+                    {done.bank.name && <div>Account name: <b>{done.bank.name}</b></div>}
+                    <div>Account no: <b>{done.bank.account}</b></div>
+                    <div>Amount: <b>MVR {done.total.toLocaleString()}</b></div>
+                    <div style={{ color: "#6b7c71", marginTop: 4 }}>Please use reference <b>#{done.ref}</b> in your transfer.</div>
+                  </div>
+                ) : (
+                  <p style={{ fontSize: 14, color: "#6b7c71", margin: 0 }}>
+                    The farm will contact you on your phone with the bank details for payment.
+                  </p>
+                )}
+                <div style={{ marginTop: 14 }}>
+                  <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 5 }}>
+                    Your transfer reference (after you pay)
+                  </label>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <input style={{ ...inp, flex: 1 }} value={payRef} onChange={(e) => setPayRef(e.target.value)} placeholder="e.g. slip / reference no." />
+                    <button style={{ ...addBtn, padding: "9px 14px", opacity: payBusy || !payRef.trim() ? 0.6 : 1 }} onClick={submitPayment} disabled={payBusy || !payRef.trim()}>
+                      {payBusy ? "..." : "I've paid"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
+              <button style={ghostBtn} onClick={() => setDone(null)}>Close</button>
+            </div>
           </div>
         </div>
       )}
@@ -318,3 +327,4 @@ const overlay: React.CSSProperties = { position: "fixed", inset: 0, background: 
 const modal: React.CSSProperties = { background: "#fff", borderRadius: 18, padding: 22, width: "100%", maxWidth: 460, maxHeight: "90vh", overflow: "auto", boxShadow: "0 20px 60px rgba(20,38,28,.3)" };
 const orderRow: React.CSSProperties = { display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px dashed #e2e9e1", fontSize: 14 };
 const inp: React.CSSProperties = { width: "100%", padding: "9px 11px", border: "1px solid #c9d6c8", borderRadius: 9, fontSize: 15, background: "#fff", boxSizing: "border-box" };
+const payBox: React.CSSProperties = { marginTop: 16, background: "#f3f6f1", border: "1px solid #e2e9e1", borderRadius: 12, padding: 16 };

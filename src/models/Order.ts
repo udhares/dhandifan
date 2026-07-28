@@ -24,7 +24,8 @@ const OrderSchema = new Schema(
     deliveryMethod: { type: String, default: "" },
     deliveryZone: { type: String, default: "" },
     deliveryFee: { type: Number, default: 0 },
-    paymentStatus: { type: String, enum: ["unpaid", "paid"], default: "unpaid" },
+    paymentStatus: { type: String, enum: ["unpaid", "submitted", "paid"], default: "unpaid" },
+    paymentRef: { type: String, default: "" },
     note: { type: String, default: "" },
   },
   { timestamps: true }
