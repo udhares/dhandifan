@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import AccountLink from "@/components/AccountLink";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -24,7 +25,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </Link>
           <nav className="nav">
             <Link href="/products">Shop</Link>
-            <Link href="/account">Account</Link>
+            <AccountLink />
             <Link href="/farmer/listings">Listings</Link>
             <Link href="/farmer/orders">Orders</Link>
           </nav>
