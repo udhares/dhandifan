@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 export interface PublicListing {
   _id: string;
@@ -42,6 +42,26 @@ export default function ProductGrid({ listings }: { listings: PublicListing[] })
   const [payRef, setPayRef] = useState("");
   const [payBusy, setPayBusy] = useState(false);
   const [paidSubmitted, setPaidSubmitted] = useState(false);
+
+  const [me, setMe] = useState<{ name: string; phone: string; points: number; savedAddress: string } | null>(null);
+
+  // If the customer is signed in, greet them and pre-fill their details.
+  useEffect(() => {
+    fetch("/api/account/me")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.customer) {
+          setMe(data.customer);
+          setForm((f) => ({
+            ...f,
+            name: f.name || data.customer.name,
+            phone: f.phone || data.customer.phone,
+            address: f.address || data.customer.savedAddress,
+          }));
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const byId = useMemo(() => {
     const m: Record<string, PublicListing> = {};
@@ -207,7 +227,16 @@ export default function ProductGrid({ listings }: { listings: PublicListing[] })
         <div style={overlay} onClick={(e) => { if (e.target === e.currentTarget) setCheckoutOpen(false); }}>
           <div style={modal}>
             <h2 style={{ margin: "0 0 4px", fontSize: 22, color: "#14472f" }}>Your order</h2>
-            <p style={{ margin: "0 0 16px", color: "#6b7c71", fontSize: 13 }}>No account needed — just your name and phone.</p>
+            {me ? (
+              <p style={{ margin: "0 0 14px", color: "#1f6b4a", fontSize: 13, fontWeight: 600 }}>
+                Signed in as {me.name} · {me.points} points. You&apos;ll earn ~{Math.floor(cartTotal / 10)} more when delivered.
+              </p>
+            ) : (
+              <p style={{ margin: "0 0 14px", color: "#6b7c71", fontSize: 13 }}>
+                No account needed — just your name and phone.{" "}
+                <a href="/account" style={{ color: "#1f6b4a", fontWeight: 600 }}>Sign in to earn points →</a>
+              </p>
+            )}
             <div style={{ marginBottom: 16 }}>
               {cartEntries.map(([id, n]) => {
                 const l = byId[id];

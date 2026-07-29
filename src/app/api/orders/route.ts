@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import { getDefaultFarmer } from "@/lib/farmer";
+import { getCustomerId } from "@/lib/customerAuth";
 import Listing from "@/models/Listing";
 import Order from "@/models/Order";
+import Customer from "@/models/Customer";
 
 type OrderItemInput = { listingId: string; qty: number };
 type BuiltItem = { listingId: unknown; title: string; qty: number; price: number };
 
 const STATUSES = ["new", "confirmed", "packed", "out", "delivered", "cancelled"];
 const PAYMENTS = ["unpaid", "submitted", "paid"];
+const POINTS_PER_MVR = 0.1; // 1 point per MVR 10 spent
 
 function bankDetails() {
   return {
@@ -31,7 +34,7 @@ export async function GET() {
   }
 }
 
-// POST -> place a new order (guest checkout)
+// POST -> place a new order (guest OR signed-in customer)
 export async function POST(req: NextRequest) {
   try {
     await connectDB();
@@ -47,6 +50,8 @@ export async function POST(req: NextRequest) {
     }
 
     const farmer = await getDefaultFarmer();
+    const customerId = await getCustomerId(req); // null if guest
+
     const orderItems: BuiltItem[] = [];
     for (const it of items) {
       const listing = await Listing.findById(it.listingId)
@@ -61,6 +66,7 @@ export async function POST(req: NextRequest) {
 
     const order = await Order.create({
       farmerId: farmer._id,
+      customerId: customerId || undefined,
       buyerName: buyerName.trim(),
       buyerPhone: buyerPhone.trim(),
       items: orderItems,
@@ -77,6 +83,7 @@ export async function POST(req: NextRequest) {
         orderId: String(order._id),
         ref: String(order._id).slice(-6).toUpperCase(),
         total,
+        pointsToEarn: Math.floor(total * POINTS_PER_MVR),
         bank: bankDetails(),
       },
       { status: 201 }
@@ -87,7 +94,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// PATCH -> update order status and/or payment status (farmer only)
+// PATCH -> update status / payment; award loyalty points when delivered
 export async function PATCH(req: NextRequest) {
   try {
     await connectDB();
@@ -96,22 +103,24 @@ export async function PATCH(req: NextRequest) {
     const status: string = body?.status ?? "";
     const paymentStatus: string = body?.paymentStatus ?? "";
     if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+    if (status && !STATUSES.includes(status)) return NextResponse.json({ error: "Bad status" }, { status: 400 });
+    if (paymentStatus && !PAYMENTS.includes(paymentStatus)) return NextResponse.json({ error: "Bad payment status" }, { status: 400 });
 
-    const update: Record<string, string> = {};
-    if (status) {
-      if (!STATUSES.includes(status)) return NextResponse.json({ error: "Bad status" }, { status: 400 });
-      update.status = status;
-    }
-    if (paymentStatus) {
-      if (!PAYMENTS.includes(paymentStatus)) return NextResponse.json({ error: "Bad payment status" }, { status: 400 });
-      update.paymentStatus = paymentStatus;
-    }
-    if (Object.keys(update).length === 0) {
-      return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
+    const order = await Order.findById(id);
+    if (!order) return NextResponse.json({ error: "Order not found" }, { status: 404 });
+
+    if (status) order.status = status;
+    if (paymentStatus) order.paymentStatus = paymentStatus;
+
+    // Award loyalty points once, when the order is delivered to a signed-in customer.
+    if (order.status === "delivered" && order.customerId && !order.pointsAwarded) {
+      const total = order.items.reduce((s: number, i: { price: number; qty: number }) => s + i.price * i.qty, 0);
+      const pts = Math.floor(total * POINTS_PER_MVR);
+      if (pts > 0) await Customer.findByIdAndUpdate(order.customerId, { $inc: { points: pts } });
+      order.pointsAwarded = true;
     }
 
-    const updated = await Order.findByIdAndUpdate(id, update, { new: true }).lean();
-    if (!updated) return NextResponse.json({ error: "Order not found" }, { status: 404 });
+    await order.save();
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error(err);

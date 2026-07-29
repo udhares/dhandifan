@@ -13,6 +13,7 @@ const OrderItemSchema = new Schema(
 const OrderSchema = new Schema(
   {
     farmerId: { type: Schema.Types.ObjectId, ref: "Farmer", required: true },
+    customerId: { type: Schema.Types.ObjectId, ref: "Customer" },
     buyerName: { type: String, required: true },
     buyerPhone: { type: String, default: "" },
     items: { type: [OrderItemSchema], default: [] },
@@ -26,6 +27,7 @@ const OrderSchema = new Schema(
     deliveryFee: { type: Number, default: 0 },
     paymentStatus: { type: String, enum: ["unpaid", "submitted", "paid"], default: "unpaid" },
     paymentRef: { type: String, default: "" },
+    pointsAwarded: { type: Boolean, default: false },
     note: { type: String, default: "" },
   },
   { timestamps: true }

@@ -13,11 +13,7 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <body>
@@ -28,6 +24,7 @@ export default function RootLayout({
           </Link>
           <nav className="nav">
             <Link href="/products">Shop</Link>
+            <Link href="/account">Account</Link>
             <Link href="/farmer/listings">Listings</Link>
             <Link href="/farmer/orders">Orders</Link>
           </nav>
