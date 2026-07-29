@@ -10,6 +10,7 @@ interface Row {
   unit: string;
   stock: number;
   emoji: string;
+  photoUrl?: string;
   active: boolean;
   certified: boolean;
 }
@@ -27,11 +28,43 @@ const EMPTY = {
   active: true,
 };
 
+// Shrink a photo in the browser before uploading (keeps files small & fast).
+function resizeImage(file: File, maxDim = 1200, quality = 0.8): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let { width, height } = img;
+      if (width > height && width > maxDim) {
+        height = Math.round((height * maxDim) / width);
+        width = maxDim;
+      } else if (height > maxDim) {
+        width = Math.round((width * maxDim) / height);
+        height = maxDim;
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return reject(new Error("no canvas"));
+      ctx.drawImage(img, 0, 0, width, height);
+      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("no blob"))), "image/jpeg", quality);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("bad image"));
+    };
+    img.src = url;
+  });
+}
+
 export default function FarmerListings() {
   const [rows, setRows] = useState<Row[]>([]);
   const [form, setForm] = useState({ ...EMPTY });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
 
   async function load() {
@@ -49,6 +82,24 @@ export default function FarmerListings() {
   useEffect(() => {
     load();
   }, []);
+
+  async function handleFile(file: File) {
+    setUploading(true);
+    setError("");
+    try {
+      const resized = await resizeImage(file);
+      const fd = new FormData();
+      fd.append("file", new File([resized], "crop.jpg", { type: "image/jpeg" }));
+      const res = await fetch("/api/upload", { method: "POST", body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "failed");
+      set("photoUrl", data.url);
+    } catch {
+      setError("Could not upload the photo. Please try a different image.");
+    } finally {
+      setUploading(false);
+    }
+  }
 
   async function submit() {
     if (!form.title || !form.price) {
@@ -73,14 +124,11 @@ export default function FarmerListings() {
     }
   }
 
-  const set = (k: string, v: string | boolean) =>
-    setForm((f) => ({ ...f, [k]: v }));
+  const set = (k: string, v: string | boolean) => setForm((f) => ({ ...f, [k]: v }));
 
   return (
     <div>
-      <h1 style={{ fontSize: 28, fontWeight: 800, color: "#14472f", margin: 0 }}>
-        Your listings
-      </h1>
+      <h1 style={{ fontSize: 28, fontWeight: 800, color: "#14472f", margin: 0 }}>Your listings</h1>
       <p style={{ color: "#6b7c71", marginTop: 6, marginBottom: 24 }}>
         Add produce here. Active listings appear on the public Shop page.
       </p>
@@ -90,9 +138,6 @@ export default function FarmerListings() {
         <div style={grid2}>
           <Field label="Title *">
             <input style={inp} value={form.title} onChange={(e) => set("title", e.target.value)} placeholder="Fresh Cucumber" />
-          </Field>
-          <Field label="Emoji">
-            <input style={inp} value={form.emoji} onChange={(e) => set("emoji", e.target.value)} />
           </Field>
           <Field label="Category">
             <select style={inp} value={form.category} onChange={(e) => set("category", e.target.value)}>
@@ -116,11 +161,30 @@ export default function FarmerListings() {
           <Field label="Stock">
             <input style={inp} type="number" value={form.stock} onChange={(e) => set("stock", e.target.value)} placeholder="100" />
           </Field>
-          <Field label="Photo URL (optional)">
-            <input style={inp} value={form.photoUrl} onChange={(e) => set("photoUrl", e.target.value)} placeholder="https://..." />
+          <Field label="Emoji (used if no photo)">
+            <input style={inp} value={form.emoji} onChange={(e) => set("emoji", e.target.value)} />
           </Field>
           <Field label="Description">
             <input style={inp} value={form.description} onChange={(e) => set("description", e.target.value)} placeholder="Picked this morning" />
+          </Field>
+          <Field label="Crop photo">
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handleFile(f);
+              }}
+              style={{ fontSize: 13 }}
+            />
+            {uploading && <div style={{ fontSize: 12, color: "#6b7c71", marginTop: 6 }}>Uploading photo…</div>}
+            {form.photoUrl && !uploading && (
+              <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={form.photoUrl} alt="preview" style={{ width: 72, height: 72, objectFit: "cover", borderRadius: 8, border: "1px solid #e2e9e1" }} />
+                <button onClick={() => set("photoUrl", "")} style={removeBtn}>Remove</button>
+              </div>
+            )}
           </Field>
         </div>
 
@@ -131,7 +195,7 @@ export default function FarmerListings() {
 
         {error && <p style={{ color: "#c4553b", fontSize: 14, marginBottom: 0 }}>{error}</p>}
 
-        <button onClick={submit} disabled={saving} style={{ ...btn, opacity: saving ? 0.7 : 1 }}>
+        <button onClick={submit} disabled={saving || uploading} style={{ ...btn, opacity: saving || uploading ? 0.7 : 1 }}>
           {saving ? "Saving..." : "Publish listing"}
         </button>
       </div>
@@ -148,7 +212,12 @@ export default function FarmerListings() {
         <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
           {rows.map((r) => (
             <div key={r._id} style={rowStyle}>
-              <span style={{ fontSize: 24 }}>{r.emoji}</span>
+              {r.photoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={r.photoUrl} alt={r.title} style={{ width: 40, height: 40, objectFit: "cover", borderRadius: 8 }} />
+              ) : (
+                <span style={{ fontSize: 24 }}>{r.emoji}</span>
+              )}
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 700 }}>{r.title}</div>
                 <div style={{ fontSize: 13, color: "#6b7c71" }}>
@@ -172,51 +241,15 @@ export default function FarmerListings() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label style={{ display: "block" }}>
-      <span style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 5 }}>
-        {label}
-      </span>
+      <span style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 5 }}>{label}</span>
       {children}
     </label>
   );
 }
 
-const panel: React.CSSProperties = {
-  background: "#fff",
-  border: "1px solid #e2e9e1",
-  borderRadius: 16,
-  padding: 20,
-  boxShadow: "0 8px 24px rgba(20,38,28,.06)",
-};
-const grid2: React.CSSProperties = {
-  display: "grid",
-  gap: 12,
-  gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-};
-const inp: React.CSSProperties = {
-  width: "100%",
-  padding: "9px 11px",
-  border: "1px solid #c9d6c8",
-  borderRadius: 9,
-  fontSize: 15,
-  background: "#fff",
-};
-const btn: React.CSSProperties = {
-  marginTop: 16,
-  background: "#1f6b4a",
-  color: "#fff",
-  border: "none",
-  borderRadius: 10,
-  padding: "11px 18px",
-  fontWeight: 700,
-  fontSize: 15,
-  cursor: "pointer",
-};
-const rowStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 12,
-  background: "#fff",
-  border: "1px solid #e2e9e1",
-  borderRadius: 12,
-  padding: "12px 14px",
-};
+const panel: React.CSSProperties = { background: "#fff", border: "1px solid #e2e9e1", borderRadius: 16, padding: 20, boxShadow: "0 8px 24px rgba(20,38,28,.06)" };
+const grid2: React.CSSProperties = { display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" };
+const inp: React.CSSProperties = { width: "100%", padding: "9px 11px", border: "1px solid #c9d6c8", borderRadius: 9, fontSize: 15, background: "#fff", boxSizing: "border-box" };
+const btn: React.CSSProperties = { marginTop: 16, background: "#1f6b4a", color: "#fff", border: "none", borderRadius: 10, padding: "11px 18px", fontWeight: 700, fontSize: 15, cursor: "pointer" };
+const rowStyle: React.CSSProperties = { display: "flex", alignItems: "center", gap: 12, background: "#fff", border: "1px solid #e2e9e1", borderRadius: 12, padding: "12px 14px" };
+const removeBtn: React.CSSProperties = { background: "#fff", color: "#c4553b", border: "1px solid #f0d6cd", borderRadius: 8, padding: "5px 10px", fontSize: 12, fontWeight: 600, cursor: "pointer" };

@@ -5,14 +5,15 @@ function needsAuth(req: NextRequest): boolean {
   const { pathname, searchParams } = req.nextUrl;
   const method = req.method;
 
-  if (pathname === "/farmer/login") return false;      // the login page itself is open
-  if (pathname.startsWith("/api/auth")) return false;  // login/logout endpoints are open
+  if (pathname === "/farmer/login") return false;
+  if (pathname.startsWith("/api/auth")) return false;
 
-  if (pathname.startsWith("/farmer")) return true;      // all other farmer pages are private
-  if (pathname === "/api/orders" && method !== "POST") return true;  // list/update orders is private
+  if (pathname.startsWith("/farmer")) return true;
+  if (pathname === "/api/upload") return true;
+  if (pathname === "/api/orders" && method !== "POST") return true;
   if (pathname === "/api/listings") {
-    if (method !== "GET") return true;                  // creating a listing is private
-    if (searchParams.get("all")) return true;           // viewing ALL listings is private
+    if (method !== "GET") return true;
+    if (searchParams.get("all")) return true;
   }
   return false;
 }
@@ -39,5 +40,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/farmer/:path*", "/api/orders", "/api/listings"],
+  matcher: ["/farmer/:path*", "/api/orders", "/api/listings", "/api/upload"],
 };
