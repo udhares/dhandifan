@@ -11,6 +11,7 @@ interface Row {
   stock: number;
   emoji: string;
   photoUrl?: string;
+  description?: string;
   active: boolean;
   certified: boolean;
 }
@@ -28,7 +29,6 @@ const EMPTY = {
   active: true,
 };
 
-// Shrink a photo in the browser before uploading (keeps files small & fast).
 function resizeImage(file: File, maxDim = 1200, quality = 0.8): Promise<Blob> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -62,9 +62,11 @@ function resizeImage(file: File, maxDim = 1200, quality = 0.8): Promise<Blob> {
 export default function FarmerListings() {
   const [rows, setRows] = useState<Row[]>([]);
   const [form, setForm] = useState({ ...EMPTY });
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
 
   async function load() {
@@ -101,6 +103,30 @@ export default function FarmerListings() {
     }
   }
 
+  function startEdit(r: Row) {
+    setEditingId(r._id);
+    setForm({
+      title: r.title,
+      category: r.category,
+      price: String(r.price),
+      unit: r.unit,
+      stock: String(r.stock),
+      emoji: r.emoji || "🥬",
+      photoUrl: r.photoUrl || "",
+      description: r.description || "",
+      certified: r.certified,
+      active: r.active,
+    });
+    setError("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setForm({ ...EMPTY });
+    setError("");
+  }
+
   async function submit() {
     if (!form.title || !form.price) {
       setError("Title and price are required.");
@@ -109,18 +135,51 @@ export default function FarmerListings() {
     setSaving(true);
     setError("");
     try {
-      const res = await fetch("/api/listings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
-      });
+      const res = editingId
+        ? await fetch("/api/listings", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: editingId, ...form }),
+          })
+        : await fetch("/api/listings", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(form),
+          });
       if (!res.ok) throw new Error();
       setForm({ ...EMPTY });
+      setEditingId(null);
       await load();
     } catch {
-      setError("Could not save. Check your database connection.");
+      setError("Could not save. Check your connection.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function toggleActive(r: Row) {
+    setBusy(r._id);
+    try {
+      await fetch("/api/listings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: r._id, active: !r.active }),
+      });
+      await load();
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function del(r: Row) {
+    if (!window.confirm(`Delete "${r.title}" permanently? This cannot be undone.`)) return;
+    setBusy(r._id);
+    try {
+      await fetch(`/api/listings?id=${r._id}`, { method: "DELETE" });
+      if (editingId === r._id) cancelEdit();
+      await load();
+    } finally {
+      setBusy("");
     }
   }
 
@@ -133,8 +192,10 @@ export default function FarmerListings() {
         Add produce here. Active listings appear on the public Shop page.
       </p>
 
-      <div style={panel}>
-        <h2 style={{ fontSize: 18, fontWeight: 700, marginTop: 0 }}>Add a listing</h2>
+      <div style={{ ...panel, borderColor: editingId ? "#e0913a" : "#e2e9e1" }}>
+        <h2 style={{ fontSize: 18, fontWeight: 700, marginTop: 0 }}>
+          {editingId ? "Edit listing" : "Add a listing"}
+        </h2>
         <div style={grid2}>
           <Field label="Title *">
             <input style={inp} value={form.title} onChange={(e) => set("title", e.target.value)} placeholder="Fresh Cucumber" />
@@ -168,21 +229,13 @@ export default function FarmerListings() {
             <input style={inp} value={form.description} onChange={(e) => set("description", e.target.value)} placeholder="Picked this morning" />
           </Field>
           <Field label="Crop photo">
-            <input
-              type="file"
-              accept="image/*"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) handleFile(f);
-              }}
-              style={{ fontSize: 13 }}
-            />
+            <input type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} style={{ fontSize: 13 }} />
             {uploading && <div style={{ fontSize: 12, color: "#6b7c71", marginTop: 6 }}>Uploading photo…</div>}
             {form.photoUrl && !uploading && (
               <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={form.photoUrl} alt="preview" style={{ width: 72, height: 72, objectFit: "cover", borderRadius: 8, border: "1px solid #e2e9e1" }} />
-                <button onClick={() => set("photoUrl", "")} style={removeBtn}>Remove</button>
+                <button onClick={() => set("photoUrl", "")} style={smallGhost}>Remove</button>
               </div>
             )}
           </Field>
@@ -195,9 +248,14 @@ export default function FarmerListings() {
 
         {error && <p style={{ color: "#c4553b", fontSize: 14, marginBottom: 0 }}>{error}</p>}
 
-        <button onClick={submit} disabled={saving || uploading} style={{ ...btn, opacity: saving || uploading ? 0.7 : 1 }}>
-          {saving ? "Saving..." : "Publish listing"}
-        </button>
+        <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+          <button onClick={submit} disabled={saving || uploading} style={{ ...btn, opacity: saving || uploading ? 0.7 : 1 }}>
+            {saving ? "Saving..." : editingId ? "Save changes" : "Publish listing"}
+          </button>
+          {editingId && (
+            <button onClick={cancelEdit} style={cancelBtn}>Cancel</button>
+          )}
+        </div>
       </div>
 
       <h2 style={{ fontSize: 18, fontWeight: 700, marginTop: 30 }}>
@@ -211,14 +269,14 @@ export default function FarmerListings() {
       ) : (
         <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
           {rows.map((r) => (
-            <div key={r._id} style={rowStyle}>
+            <div key={r._id} style={{ ...rowStyle, opacity: r.active ? 1 : 0.6 }}>
               {r.photoUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={r.photoUrl} alt={r.title} style={{ width: 40, height: 40, objectFit: "cover", borderRadius: 8 }} />
               ) : (
                 <span style={{ fontSize: 24 }}>{r.emoji}</span>
               )}
-              <div style={{ flex: 1 }}>
+              <div style={{ flex: 1, minWidth: 140 }}>
                 <div style={{ fontWeight: 700 }}>{r.title}</div>
                 <div style={{ fontSize: 13, color: "#6b7c71" }}>
                   {r.category} · {r.stock} {r.unit} in stock
@@ -227,9 +285,13 @@ export default function FarmerListings() {
               <div style={{ fontWeight: 800, color: "#14472f" }}>
                 MVR {r.price} <span style={{ fontSize: 12, color: "#6b7c71" }}>/{r.unit}</span>
               </div>
-              <span style={{ fontSize: 12, fontWeight: 700, color: r.active ? "#1f6b4a" : "#6b7c71" }}>
-                {r.active ? "Active" : "Hidden"}
-              </span>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <button style={editBtn} onClick={() => startEdit(r)} disabled={busy === r._id}>Edit</button>
+                <button style={hideBtn} onClick={() => toggleActive(r)} disabled={busy === r._id}>
+                  {r.active ? "Hide" : "Show"}
+                </button>
+                <button style={deleteBtn} onClick={() => del(r)} disabled={busy === r._id}>Delete</button>
+              </div>
             </div>
           ))}
         </div>
@@ -250,6 +312,10 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 const panel: React.CSSProperties = { background: "#fff", border: "1px solid #e2e9e1", borderRadius: 16, padding: 20, boxShadow: "0 8px 24px rgba(20,38,28,.06)" };
 const grid2: React.CSSProperties = { display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" };
 const inp: React.CSSProperties = { width: "100%", padding: "9px 11px", border: "1px solid #c9d6c8", borderRadius: 9, fontSize: 15, background: "#fff", boxSizing: "border-box" };
-const btn: React.CSSProperties = { marginTop: 16, background: "#1f6b4a", color: "#fff", border: "none", borderRadius: 10, padding: "11px 18px", fontWeight: 700, fontSize: 15, cursor: "pointer" };
-const rowStyle: React.CSSProperties = { display: "flex", alignItems: "center", gap: 12, background: "#fff", border: "1px solid #e2e9e1", borderRadius: 12, padding: "12px 14px" };
-const removeBtn: React.CSSProperties = { background: "#fff", color: "#c4553b", border: "1px solid #f0d6cd", borderRadius: 8, padding: "5px 10px", fontSize: 12, fontWeight: 600, cursor: "pointer" };
+const btn: React.CSSProperties = { background: "#1f6b4a", color: "#fff", border: "none", borderRadius: 10, padding: "11px 18px", fontWeight: 700, fontSize: 15, cursor: "pointer" };
+const cancelBtn: React.CSSProperties = { background: "#fff", color: "#14261c", border: "1px solid #c9d6c8", borderRadius: 10, padding: "11px 18px", fontWeight: 600, fontSize: 15, cursor: "pointer" };
+const rowStyle: React.CSSProperties = { display: "flex", alignItems: "center", gap: 12, background: "#fff", border: "1px solid #e2e9e1", borderRadius: 12, padding: "12px 14px", flexWrap: "wrap" };
+const editBtn: React.CSSProperties = { background: "#fff", color: "#1f6b4a", border: "1px solid #c9d6c8", borderRadius: 8, padding: "6px 12px", fontSize: 13, fontWeight: 600, cursor: "pointer" };
+const hideBtn: React.CSSProperties = { background: "#fff", color: "#b36f1f", border: "1px solid #f0e0c5", borderRadius: 8, padding: "6px 12px", fontSize: 13, fontWeight: 600, cursor: "pointer" };
+const deleteBtn: React.CSSProperties = { background: "#fff", color: "#c4553b", border: "1px solid #f0d6cd", borderRadius: 8, padding: "6px 12px", fontSize: 13, fontWeight: 600, cursor: "pointer" };
+const smallGhost: React.CSSProperties = { background: "#fff", color: "#c4553b", border: "1px solid #f0d6cd", borderRadius: 8, padding: "5px 10px", fontSize: 12, fontWeight: 600, cursor: "pointer" };
