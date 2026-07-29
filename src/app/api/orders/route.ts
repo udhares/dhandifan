@@ -11,7 +11,7 @@ type BuiltItem = { listingId: unknown; title: string; qty: number; price: number
 
 const STATUSES = ["new", "confirmed", "packed", "out", "delivered", "cancelled"];
 const PAYMENTS = ["unpaid", "submitted", "paid"];
-const POINTS_PER_MVR = 0.1; // 1 point per MVR 10 spent
+const POINTS_PER_MVR = 0.04; // 1 point per MVR 25 spent
 
 function bankDetails() {
   return {
@@ -112,8 +112,8 @@ export async function PATCH(req: NextRequest) {
     if (status) order.status = status;
     if (paymentStatus) order.paymentStatus = paymentStatus;
 
-    // Award loyalty points once, when the order is delivered to a signed-in customer.
-    if (order.status === "delivered" && order.customerId && !order.pointsAwarded) {
+    // Award loyalty points once, when the customer's payment is confirmed.
+    if (order.paymentStatus === "paid" && order.customerId && !order.pointsAwarded) {
       const total = order.items.reduce((s: number, i: { price: number; qty: number }) => s + i.price * i.qty, 0);
       const pts = Math.floor(total * POINTS_PER_MVR);
       if (pts > 0) await Customer.findByIdAndUpdate(order.customerId, { $inc: { points: pts } });

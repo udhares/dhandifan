@@ -229,7 +229,7 @@ export default function ProductGrid({ listings }: { listings: PublicListing[] })
             <h2 style={{ margin: "0 0 4px", fontSize: 22, color: "#14472f" }}>Your order</h2>
             {me ? (
               <p style={{ margin: "0 0 14px", color: "#1f6b4a", fontSize: 13, fontWeight: 600 }}>
-                Signed in as {me.name} · {me.points} points. You&apos;ll earn ~{Math.floor(cartTotal / 10)} more when delivered.
+                Signed in as {me.name} · {me.points} points. You&apos;ll earn ~{Math.floor(cartTotal / 25)} more once your payment is confirmed.
               </p>
             ) : (
               <p style={{ margin: "0 0 14px", color: "#6b7c71", fontSize: 13 }}>

@@ -100,7 +100,7 @@ export default function AccountPage() {
         <div style={pointsCard}>
           <div style={{ fontSize: 13, opacity: 0.9 }}>Your loyalty points</div>
           <div style={{ fontSize: 40, fontWeight: 800, lineHeight: 1.1 }}>{me.points}</div>
-          <div style={{ fontSize: 12, opacity: 0.85, marginTop: 4 }}>Earn 1 point for every MVR 10 spent, added when your order is delivered.</div>
+          <div style={{ fontSize: 12, opacity: 0.85, marginTop: 4 }}>Earn 1 point for every MVR 25 spent, added when your payment is confirmed.</div>
         </div>
 
         <div style={panel}>
