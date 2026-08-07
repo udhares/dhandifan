@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import AccountLink from "@/components/AccountLink";
+import HeaderNav from "@/components/HeaderNav";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -23,12 +23,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <span className="brand-mark">🌴</span>
             <span className="brand-name">Dhandifan</span>
           </Link>
-          <nav className="nav">
-            <Link href="/products">Shop</Link>
-            <AccountLink />
-            <Link href="/farmer/listings">Listings</Link>
-            <Link href="/farmer/orders">Orders</Link>
-          </nav>
+          <HeaderNav />
         </header>
         <main className="main">{children}</main>
       </body>

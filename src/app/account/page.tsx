@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useLang, t } from "@/lib/i18n";
 
 interface OrderRow {
   _id: string;
@@ -9,12 +10,7 @@ interface OrderRow {
   createdAt: string;
   pointsAwarded: boolean;
 }
-interface Me {
-  name: string;
-  phone: string;
-  points: number;
-  savedAddress: string;
-}
+interface Me { name: string; phone: string; points: number; savedAddress: string; }
 
 const STATUS_LABEL: Record<string, string> = {
   new: "New", confirmed: "Confirmed", packed: "Packed",
@@ -22,6 +18,7 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 export default function AccountPage() {
+  const [lang] = useLang();
   const [loading, setLoading] = useState(true);
   const [me, setMe] = useState<Me | null>(null);
   const [orders, setOrders] = useState<OrderRow[]>([]);
@@ -41,9 +38,7 @@ export default function AccountPage() {
         setMe(data.customer);
         setOrders(data.orders || []);
         setAddr(data.customer.savedAddress || "");
-      } else {
-        setMe(null);
-      }
+      } else setMe(null);
     } finally {
       setLoading(false);
     }
@@ -54,11 +49,7 @@ export default function AccountPage() {
     setBusy(true); setErr("");
     try {
       const url = mode === "signup" ? "/api/account/signup" : "/api/account/login";
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
-      });
+      const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
       const data = await res.json();
       if (!res.ok) { setErr(data.error || "Something went wrong."); return; }
       setForm({ name: "", phone: "", password: "" });
@@ -77,44 +68,38 @@ export default function AccountPage() {
 
   async function saveAddress() {
     setSavedMsg("");
-    await fetch("/api/account/me", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ savedAddress: addr }),
-    });
-    setSavedMsg("Saved ✓");
+    await fetch("/api/account/me", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ savedAddress: addr }) });
+    setSavedMsg("✓");
     setTimeout(() => setSavedMsg(""), 2000);
   }
 
   if (loading) return <p style={{ color: "#6b7c71" }}>Loading...</p>;
 
-  // ---- signed in ----
   if (me) {
     return (
       <div style={{ maxWidth: 640 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <h1 style={{ fontSize: 28, fontWeight: 800, color: "#14472f", margin: 0 }}>Hi, {me.name}</h1>
-          <button onClick={logout} style={logoutBtn}>Log out</button>
+          <h1 style={{ fontSize: 28, fontWeight: 800, color: "#14472f", margin: 0 }}>{me.name}</h1>
+          <button onClick={logout} style={logoutBtn}>{t("logout", lang)}</button>
         </div>
 
         <div style={pointsCard}>
-          <div style={{ fontSize: 13, opacity: 0.9 }}>Your loyalty points</div>
+          <div style={{ fontSize: 13, opacity: 0.9 }}>{t("loyaltyPoints", lang)}</div>
           <div style={{ fontSize: 40, fontWeight: 800, lineHeight: 1.1 }}>{me.points}</div>
-          <div style={{ fontSize: 12, opacity: 0.85, marginTop: 4 }}>Earn 1 point for every MVR 25 spent, added when your payment is confirmed.</div>
         </div>
 
         <div style={panel}>
-          <div style={{ fontWeight: 700, marginBottom: 8 }}>Saved delivery address</div>
+          <div style={{ fontWeight: 700, marginBottom: 8 }}>{t("savedAddress", lang)}</div>
           <div style={{ display: "flex", gap: 8 }}>
-            <input style={{ ...inp, flex: 1 }} value={addr} onChange={(e) => setAddr(e.target.value)} placeholder="Your usual delivery address" />
-            <button style={primaryBtn} onClick={saveAddress}>Save</button>
+            <input style={{ ...inp, flex: 1 }} value={addr} onChange={(e) => setAddr(e.target.value)} />
+            <button style={primaryBtn} onClick={saveAddress}>{t("save", lang)}</button>
           </div>
           {savedMsg && <div style={{ color: "#1f6b4a", fontSize: 13, marginTop: 6 }}>{savedMsg}</div>}
         </div>
 
-        <h2 style={{ fontSize: 18, fontWeight: 700, marginTop: 26 }}>Your orders</h2>
+        <h2 style={{ fontSize: 18, fontWeight: 700, marginTop: 26 }}>{t("yourOrders", lang)}</h2>
         {orders.length === 0 ? (
-          <p style={{ color: "#6b7c71" }}>No orders yet.</p>
+          <p style={{ color: "#6b7c71" }}>—</p>
         ) : (
           <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
             {orders.map((o) => {
@@ -138,43 +123,36 @@ export default function AccountPage() {
     );
   }
 
-  // ---- not signed in: login / signup ----
   return (
     <div style={{ display: "grid", placeItems: "center", minHeight: "60vh" }}>
       <div style={authCard}>
         <div style={{ fontSize: 40, textAlign: "center" }}>🌴</div>
-        <h1 style={{ fontSize: 22, color: "#14472f", textAlign: "center", margin: "6px 0 2px" }}>
-          {mode === "signup" ? "Create your account" : "Welcome back"}
+        <h1 style={{ fontSize: 22, color: "#14472f", textAlign: "center", margin: "6px 0 14px" }}>
+          {mode === "signup" ? t("createAccount", lang) : t("welcomeBack", lang)}
         </h1>
-        <p style={{ textAlign: "center", color: "#6b7c71", fontSize: 13, margin: "0 0 18px" }}>
-          {mode === "signup" ? "Earn points and save your details." : "Sign in to your Dhandifan account."}
-        </p>
 
         {mode === "signup" && (
-          <Field label="Your name">
+          <Field label={t("yourName", lang)}>
             <input style={inp} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </Field>
         )}
-        <Field label="Phone number">
-          <input style={inp} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="e.g. 777-1234" />
+        <Field label={t("phone", lang)}>
+          <input style={inp} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
         </Field>
-        <Field label="Password">
+        <Field label={t("password", lang)}>
           <input style={inp} type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })}
             onKeyDown={(e) => { if (e.key === "Enter") submit(); }} />
         </Field>
 
         {err && <p style={{ color: "#c4553b", fontSize: 13, margin: "6px 0 0" }}>{err}</p>}
         <button style={bigBtn} onClick={submit} disabled={busy}>
-          {busy ? "Please wait..." : mode === "signup" ? "Sign up" : "Log in"}
+          {busy ? "..." : mode === "signup" ? t("signup", lang) : t("login", lang)}
         </button>
 
         <p style={{ textAlign: "center", fontSize: 13, color: "#6b7c71", marginTop: 14 }}>
-          {mode === "signup" ? "Already have an account? " : "New here? "}
-          <button
-            onClick={() => { setMode(mode === "signup" ? "login" : "signup"); setErr(""); }}
-            style={{ background: "none", border: "none", color: "#1f6b4a", fontWeight: 700, cursor: "pointer", fontSize: 13 }}
-          >
-            {mode === "signup" ? "Log in" : "Create one"}
+          <button onClick={() => { setMode(mode === "signup" ? "login" : "signup"); setErr(""); }}
+            style={{ background: "none", border: "none", color: "#1f6b4a", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>
+            {mode === "signup" ? t("login", lang) : t("signup", lang)}
           </button>
         </p>
       </div>
@@ -198,4 +176,4 @@ const orderCard: React.CSSProperties = { background: "#fff", border: "1px solid 
 const inp: React.CSSProperties = { width: "100%", padding: "10px 12px", border: "1px solid #c9d6c8", borderRadius: 9, fontSize: 15, boxSizing: "border-box" };
 const bigBtn: React.CSSProperties = { width: "100%", marginTop: 14, background: "#1f6b4a", color: "#fff", border: "none", borderRadius: 10, padding: "11px", fontWeight: 700, fontSize: 15, cursor: "pointer" };
 const primaryBtn: React.CSSProperties = { background: "#1f6b4a", color: "#fff", border: "none", borderRadius: 9, padding: "10px 16px", fontWeight: 700, fontSize: 14, cursor: "pointer" };
-const logoutBtn: React.CSSProperties = { marginLeft: "auto", background: "#fff", color: "#c4553b", border: "1px solid #f0d6cd", borderRadius: 9, padding: "7px 14px", fontWeight: 600, fontSize: 13, cursor: "pointer" };
+const logoutBtn: React.CSSProperties = { marginInlineStart: "auto", background: "#fff", color: "#c4553b", border: "1px solid #f0d6cd", borderRadius: 9, padding: "7px 14px", fontWeight: 600, fontSize: 13, cursor: "pointer" };

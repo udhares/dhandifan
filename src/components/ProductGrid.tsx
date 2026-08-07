@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useLang, t } from "@/lib/i18n";
 
 export interface PublicListing {
   _id: string;
@@ -20,21 +21,26 @@ interface Bank { bank: string; name: string; account: string; }
 interface Placed { orderId: string; ref: string; total: number; bank: Bank; }
 
 const CATEGORIES = ["All", "Fruit", "Vegetable", "Herb", "Other"];
+const CAT_KEY: Record<string, string> = { All: "all", Fruit: "fruit", Vegetable: "vegetable", Herb: "herb", Other: "other" };
+
+// Delivery values are stored in English; only the display label is translated.
 const DELIVERY = [
-  "Dhoni / boat to Malé",
-  "Ferry / terminal pickup",
-  "Home delivery on the island",
-  "I'll arrange my own transport",
+  { value: "Dhoni / boat to Malé", key: "delivDhoni" },
+  { value: "Ferry / terminal pickup", key: "delivFerry" },
+  { value: "Home delivery on the island", key: "delivHome" },
+  { value: "I'll arrange my own transport", key: "delivOwn" },
 ];
 
 export default function ProductGrid({ listings }: { listings: PublicListing[] }) {
+  const [lang] = useLang();
+
   const [q, setQ] = useState("");
   const [cat, setCat] = useState("All");
   const [sort, setSort] = useState("newest");
 
   const [cart, setCart] = useState<Record<string, number>>({});
   const [checkoutOpen, setCheckoutOpen] = useState(false);
-  const [form, setForm] = useState({ name: "", phone: "", delivery: DELIVERY[0], address: "" });
+  const [form, setForm] = useState({ name: "", phone: "", delivery: DELIVERY[0].value, address: "" });
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState("");
 
@@ -45,7 +51,6 @@ export default function ProductGrid({ listings }: { listings: PublicListing[] })
 
   const [me, setMe] = useState<{ name: string; phone: string; points: number; savedAddress: string } | null>(null);
 
-  // If the customer is signed in, greet them and pre-fill their details.
   useEffect(() => {
     fetch("/api/account/me")
       .then((r) => (r.ok ? r.json() : null))
@@ -126,7 +131,7 @@ export default function ProductGrid({ listings }: { listings: PublicListing[] })
       setPayRef("");
       setCart({});
       setCheckoutOpen(false);
-      setForm({ name: "", phone: "", delivery: DELIVERY[0], address: "" });
+      setForm({ name: "", phone: "", delivery: DELIVERY[0].value, address: "" });
     } catch {
       setError("Could not place the order. Please try again.");
     } finally {
@@ -151,25 +156,30 @@ export default function ProductGrid({ listings }: { listings: PublicListing[] })
 
   return (
     <div>
+      <h1 style={{ fontSize: 28, fontWeight: 800, color: "#14472f", margin: 0 }}>{t("freshFrom", lang)}</h1>
+      <p style={{ color: "#6b7c71", marginTop: 6, marginBottom: 22 }}>
+        Island produce, picked and listed by the farmer.
+      </p>
+
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search produce..." style={{ ...inputStyle, flex: 1, minWidth: 180 }} />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("search", lang)} style={{ ...inputStyle, flex: 1, minWidth: 180 }} />
         <select value={sort} onChange={(e) => setSort(e.target.value)} style={inputStyle}>
-          <option value="newest">Newest</option>
-          <option value="price-low">Price: low to high</option>
-          <option value="price-high">Price: high to low</option>
+          <option value="newest">{t("newest", lang)}</option>
+          <option value="price-low">{t("priceLow", lang)}</option>
+          <option value="price-high">{t("priceHigh", lang)}</option>
         </select>
       </div>
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 22 }}>
         {CATEGORIES.map((c) => (
           <button key={c} onClick={() => setCat(c)} style={{ ...chip, background: cat === c ? "#1f6b4a" : "#fff", color: cat === c ? "#fff" : "#14261c", borderColor: cat === c ? "#1f6b4a" : "#c9d6c8" }}>
-            {c}
+            {t(CAT_KEY[c], lang)}
           </button>
         ))}
       </div>
 
       {shown.length === 0 ? (
-        <p style={{ color: "#6b7c71" }}>No produce matches your search.</p>
+        <p style={{ color: "#6b7c71" }}>{t("noMatch", lang)}</p>
       ) : (
         <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>
           {shown.map((l) => {
@@ -184,8 +194,8 @@ export default function ProductGrid({ listings }: { listings: PublicListing[] })
                   ) : (
                     <span style={{ fontSize: 48 }}>{l.emoji}</span>
                   )}
-                  {l.certified && <span style={certBadge}>✓ Certified</span>}
-                  {soldOut && <span style={soldBadge}>Sold out</span>}
+                  {l.certified && <span style={certBadge}>✓ {t("certified", lang)}</span>}
+                  {soldOut && <span style={soldBadge}>{t("soldOut", lang)}</span>}
                 </div>
                 <div style={{ padding: "14px 15px", flex: 1 }}>
                   <div style={{ fontWeight: 700, fontSize: 16 }}>{l.title}</div>
@@ -196,7 +206,7 @@ export default function ProductGrid({ listings }: { listings: PublicListing[] })
                       <span style={{ fontSize: 12, color: "#6b7c71", fontWeight: 600 }}> /{l.unit}</span>
                     </span>
                     {soldOut ? (
-                      <span style={{ fontSize: 12, fontWeight: 700, color: "#6b7c71" }}>Sold out</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "#6b7c71" }}>{t("soldOut", lang)}</span>
                     ) : inCart > 0 ? (
                       <span style={qtyBox}>
                         <button style={qtyBtn} onClick={() => setQty(l._id, -1)}>−</button>
@@ -204,7 +214,7 @@ export default function ProductGrid({ listings }: { listings: PublicListing[] })
                         <button style={qtyBtn} onClick={() => setQty(l._id, 1)}>+</button>
                       </span>
                     ) : (
-                      <button style={addBtn} onClick={() => setQty(l._id, 1)}>Add</button>
+                      <button style={addBtn} onClick={() => setQty(l._id, 1)}>{t("add", lang)}</button>
                     )}
                   </div>
                 </div>
@@ -216,25 +226,22 @@ export default function ProductGrid({ listings }: { listings: PublicListing[] })
 
       {itemCount > 0 && (
         <div style={cartBar}>
-          <span style={{ fontWeight: 600 }}>
-            {itemCount} item{itemCount > 1 ? "s" : ""} · MVR {cartTotal.toLocaleString()}
-          </span>
-          <button style={checkoutBtn} onClick={() => { setError(""); setCheckoutOpen(true); }}>Checkout →</button>
+          <span style={{ fontWeight: 600 }}>{itemCount} · MVR {cartTotal.toLocaleString()}</span>
+          <button style={checkoutBtn} onClick={() => { setError(""); setCheckoutOpen(true); }}>{t("checkout", lang)} →</button>
         </div>
       )}
 
       {checkoutOpen && (
         <div style={overlay} onClick={(e) => { if (e.target === e.currentTarget) setCheckoutOpen(false); }}>
           <div style={modal}>
-            <h2 style={{ margin: "0 0 4px", fontSize: 22, color: "#14472f" }}>Your order</h2>
+            <h2 style={{ margin: "0 0 4px", fontSize: 22, color: "#14472f" }}>{t("yourOrder", lang)}</h2>
             {me ? (
               <p style={{ margin: "0 0 14px", color: "#1f6b4a", fontSize: 13, fontWeight: 600 }}>
-                Signed in as {me.name} · {me.points} points. You&apos;ll earn ~{Math.floor(cartTotal / 25)} more once your payment is confirmed.
+                👋 {me.name} · {me.points} · +{Math.floor(cartTotal / 25)}
               </p>
             ) : (
               <p style={{ margin: "0 0 14px", color: "#6b7c71", fontSize: 13 }}>
-                No account needed — just your name and phone.{" "}
-                <a href="/account" style={{ color: "#1f6b4a", fontWeight: 600 }}>Sign in to earn points →</a>
+                <a href="/account" style={{ color: "#1f6b4a", fontWeight: 600 }}>{t("login", lang)} →</a>
               </p>
             )}
             <div style={{ marginBottom: 16 }}>
@@ -249,23 +256,23 @@ export default function ProductGrid({ listings }: { listings: PublicListing[] })
                 );
               })}
               <div style={{ ...orderRow, borderBottom: "none", marginTop: 4 }}>
-                <span style={{ fontWeight: 800, fontSize: 17 }}>Total</span>
+                <span style={{ fontWeight: 800, fontSize: 17 }}>{t("total", lang)}</span>
                 <span style={{ fontWeight: 800, fontSize: 17, color: "#14472f" }}>MVR {cartTotal.toLocaleString()}</span>
               </div>
             </div>
-            <Field label="Your name *"><input style={inp} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Aminath" /></Field>
-            <Field label="Phone number *"><input style={inp} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="e.g. 777-1234" /></Field>
-            <Field label="Delivery method">
+            <Field label={t("yourName", lang)}><input style={inp} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
+            <Field label={t("phone", lang)}><input style={inp} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></Field>
+            <Field label={t("deliveryMethod", lang)}>
               <select style={inp} value={form.delivery} onChange={(e) => setForm({ ...form, delivery: e.target.value })}>
-                {DELIVERY.map((d) => <option key={d}>{d}</option>)}
+                {DELIVERY.map((d) => <option key={d.value} value={d.value}>{t(d.key, lang)}</option>)}
               </select>
             </Field>
-            <Field label="Delivery address / note"><input style={inp} value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="Where should it go?" /></Field>
+            <Field label={t("deliveryAddress", lang)}><input style={inp} value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} /></Field>
             {error && <p style={{ color: "#c4553b", fontSize: 14, margin: "0 0 10px" }}>{error}</p>}
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-              <button style={ghostBtn} onClick={() => setCheckoutOpen(false)}>Back</button>
+              <button style={ghostBtn} onClick={() => setCheckoutOpen(false)}>{t("back", lang)}</button>
               <button style={{ ...addBtn, padding: "11px 20px", fontSize: 15, opacity: placing ? 0.7 : 1 }} onClick={placeOrder} disabled={placing}>
-                {placing ? "Placing..." : "Place order"}
+                {placing ? "..." : t("placeOrder", lang)}
               </button>
             </div>
           </div>
@@ -277,44 +284,39 @@ export default function ProductGrid({ listings }: { listings: PublicListing[] })
           <div style={modal}>
             <div style={{ textAlign: "center" }}>
               <div style={{ fontSize: 44 }}>✅</div>
-              <h2 style={{ margin: "6px 0 4px", fontSize: 22, color: "#14472f" }}>Order placed!</h2>
+              <h2 style={{ margin: "6px 0 4px", fontSize: 22, color: "#14472f" }}>{t("orderPlaced", lang)}</h2>
               <p style={{ color: "#333", margin: 0 }}>
-                Reference <b>#{done.ref}</b> · Total <b>MVR {done.total.toLocaleString()}</b>
+                {t("reference", lang)} <b>#{done.ref}</b> · MVR {done.total.toLocaleString()}
               </p>
             </div>
 
             {paidSubmitted ? (
               <div style={{ ...payBox, textAlign: "center" }}>
                 <div style={{ fontSize: 30 }}>🎉</div>
-                <p style={{ margin: "6px 0 0", fontWeight: 600 }}>Thank you! Payment reference received.</p>
-                <p style={{ margin: "4px 0 0", color: "#6b7c71", fontSize: 13 }}>
-                  The farm will verify it and confirm your order.
-                </p>
+                <p style={{ margin: "6px 0 0", fontWeight: 600 }}>{t("thankYou", lang)}</p>
               </div>
             ) : (
               <div style={payBox}>
-                <div style={{ fontWeight: 700, marginBottom: 8 }}>Pay by bank transfer</div>
+                <div style={{ fontWeight: 700, marginBottom: 8 }}>{t("payByTransfer", lang)}</div>
                 {done.bank.account ? (
                   <div style={{ fontSize: 14, lineHeight: 1.7 }}>
                     <div><b>{done.bank.bank}</b></div>
-                    {done.bank.name && <div>Account name: <b>{done.bank.name}</b></div>}
-                    <div>Account no: <b>{done.bank.account}</b></div>
-                    <div>Amount: <b>MVR {done.total.toLocaleString()}</b></div>
-                    <div style={{ color: "#6b7c71", marginTop: 4 }}>Please use reference <b>#{done.ref}</b> in your transfer.</div>
+                    {done.bank.name && <div>{done.bank.name}</div>}
+                    <div>{t("accountNumber", lang)}: <b>{done.bank.account}</b></div>
+                    <div>{t("amount", lang)}: <b>MVR {done.total.toLocaleString()}</b></div>
+                    <div style={{ color: "#6b7c71", marginTop: 4 }}>{t("reference", lang)}: <b>#{done.ref}</b></div>
                   </div>
                 ) : (
                   <p style={{ fontSize: 14, color: "#6b7c71", margin: 0 }}>
-                    The farm will contact you on your phone with the bank details for payment.
+                    The farm will contact you with the bank details for payment.
                   </p>
                 )}
                 <div style={{ marginTop: 14 }}>
-                  <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 5 }}>
-                    Your transfer reference (after you pay)
-                  </label>
+                  <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 5 }}>{t("transferRef", lang)}</label>
                   <div style={{ display: "flex", gap: 8 }}>
-                    <input style={{ ...inp, flex: 1 }} value={payRef} onChange={(e) => setPayRef(e.target.value)} placeholder="e.g. slip / reference no." />
+                    <input style={{ ...inp, flex: 1 }} value={payRef} onChange={(e) => setPayRef(e.target.value)} />
                     <button style={{ ...addBtn, padding: "9px 14px", opacity: payBusy || !payRef.trim() ? 0.6 : 1 }} onClick={submitPayment} disabled={payBusy || !payRef.trim()}>
-                      {payBusy ? "..." : "I've paid"}
+                      {payBusy ? "..." : t("ivePaid", lang)}
                     </button>
                   </div>
                 </div>
@@ -322,7 +324,7 @@ export default function ProductGrid({ listings }: { listings: PublicListing[] })
             )}
 
             <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
-              <button style={ghostBtn} onClick={() => setDone(null)}>Close</button>
+              <button style={ghostBtn} onClick={() => setDone(null)}>{t("close", lang)}</button>
             </div>
           </div>
         </div>
