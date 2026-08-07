@@ -180,14 +180,14 @@ export default function ProductGrid({ listings }: { listings: PublicListing[] })
                 <div style={{ ...media, opacity: soldOut ? 0.55 : 1 }}>
                   {l.photoUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={l.photoUrl} alt={l.title} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    <img src={l.photoUrl} alt={l.title} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
                   ) : (
                     <span style={{ fontSize: 48 }}>{l.emoji}</span>
                   )}
                   {l.certified && <span style={certBadge}>✓ Certified</span>}
                   {soldOut && <span style={soldBadge}>Sold out</span>}
                 </div>
-                <div style={{ padding: "14px 15px" }}>
+                <div style={{ padding: "14px 15px", flex: 1 }}>
                   <div style={{ fontWeight: 700, fontSize: 16 }}>{l.title}</div>
                   <div style={{ color: "#6b7c71", fontSize: 13, minHeight: 18 }}>{l.description}</div>
                   <div style={{ marginTop: 10, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
@@ -342,8 +342,8 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 const inputStyle: React.CSSProperties = { padding: "10px 12px", border: "1px solid #c9d6c8", borderRadius: 10, fontSize: 15, background: "#fff" };
 const chip: React.CSSProperties = { padding: "7px 14px", borderRadius: 20, border: "1px solid", fontWeight: 600, fontSize: 13, cursor: "pointer" };
-const card: React.CSSProperties = { background: "#fff", border: "1px solid #e2e9e1", borderRadius: 16, overflow: "hidden", boxShadow: "0 8px 24px rgba(20,38,28,.06)" };
-const media: React.CSSProperties = { height: 120, background: "#e6f0e8", display: "grid", placeItems: "center", position: "relative" };
+const card: React.CSSProperties = { background: "#fff", border: "1px solid #e2e9e1", borderRadius: 16, overflow: "hidden", boxShadow: "0 8px 24px rgba(20,38,28,.06)", display: "flex", flexDirection: "column" };
+const media: React.CSSProperties = { height: 120, background: "#e6f0e8", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden", flexShrink: 0 };
 const certBadge: React.CSSProperties = { position: "absolute", top: 10, right: 10, background: "#1f6b4a", color: "#fff", fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 20 };
 const soldBadge: React.CSSProperties = { position: "absolute", top: 10, left: 10, background: "rgba(20,38,28,.8)", color: "#fff", fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 20 };
 const addBtn: React.CSSProperties = { background: "#1f6b4a", color: "#fff", border: "none", borderRadius: 9, padding: "8px 14px", fontWeight: 700, fontSize: 13, cursor: "pointer" };
